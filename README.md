@@ -2,7 +2,7 @@
 
 ## 概述
 
-本插件是由 **Qwen3-Coder** 联合编写的 CS:GO 服务器插件，为玩家提供个性化的武器自动替换功能。请注意，本插件完全由AI编写，发布者[Small__Mushroom](https://github.com/smallmushroomovo)未参与代码开发过程，因此可能存在未预见的错误和稳定性问题。
+本插件是由 **Qwen3-Coder** 编写的 CS:GO 服务器插件，为玩家提供个性化的武器自动替换功能。请注意，本插件完全由AI编写，发布者[Small__Mushroom](https://github.com/smallmushroomovo)未参与代码开发过程，因此可能存在未预见的错误和稳定性问题。
 
 ## 免责声明
 
