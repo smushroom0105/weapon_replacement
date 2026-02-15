@@ -6,519 +6,455 @@
 #include <cstrike>
 #include <clientprefs>
 
-#define PLUGIN_VERSION "3.3"
+#define PLUGIN_VERSION "5.1"
 
-// 武器定义常量
-#define WEAPON_P2000        "weapon_hkp2000"
-#define WEAPON_USP          "weapon_usp_silencer"
-#define WEAPON_M4A4         "weapon_m4a1"
-#define WEAPON_M4A1         "weapon_m4a1_silencer"
-#define WEAPON_MP7          "weapon_mp7"
-#define WEAPON_MP5          "weapon_mp5sd"
-#define WEAPON_DEAGLE       "weapon_deagle"
-#define WEAPON_R8           "weapon_revolver"
-#define WEAPON_FIVESEVEN    "weapon_fiveseven"
-#define WEAPON_TEC9         "weapon_tec9"
-#define WEAPON_CZ75         "weapon_cz75a"
+// Weapon definitions
+#define W_P2000  "weapon_hkp2000"
+#define W_USP    "weapon_usp_silencer"
+#define W_M4A4   "weapon_m4a1"
+#define W_M4A1   "weapon_m4a1_silencer"
+#define W_MP7    "weapon_mp7"
+#define W_MP5    "weapon_mp5sd"
+#define W_DEAGLE "weapon_deagle"
+#define W_R8     "weapon_revolver"
+#define W_FIVE7  "weapon_fiveseven"
+#define W_TEC9   "weapon_tec9"
+#define W_CZ75   "weapon_cz75a"
 
-// 武器价格枚举
-enum WeaponPrice {
-    PRICE_P2000 = 200,
-    PRICE_USP = 200,
-    PRICE_M4A4 = 3100,
-    PRICE_M4A1 = 2900,
-    PRICE_MP7 = 1500,
-    PRICE_MP5 = 1500,
-    PRICE_DEAGLE = 700,
-    PRICE_R8 = 600,
-    PRICE_FIVESEVEN = 500,
-    PRICE_TEC9 = 500,
-    PRICE_CZ75 = 500
-};
+// Prices
+#define P_P2000 200
+#define P_USP   200
+#define P_M4A4  3100
+#define P_M4A1  2900
+#define P_MP7   1500
+#define P_MP5   1500
+#define P_DEAGLE 700
+#define P_R8    600
+#define P_FIVE7 500
+#define P_TEC9  500
+#define P_CZ75  500
 
-// 玩家设置结构体
-enum struct PlayerSettings {
-    bool ReplaceP2000;
-    bool ReplaceM4A4;
-    bool ReplaceMP7;
-    bool ReplaceDeagle;
-    bool ReplacePistols;
-    bool Loaded;
-}
-
-// 全局变量
-Handle g_hCookie = null;
-ConVar g_cvDefaultP2000, g_cvDefaultM4A4, g_cvDefaultMP7, g_cvDefaultDeagle, g_cvDefaultPistols;
-ConVar g_cvGameType, g_cvGameMode;
-bool g_bIsDeathmatch = false;
-
-PlayerSettings g_PlayerSettings[MAXPLAYERS + 1];
-ArrayList g_ReplaceQueue[MAXPLAYERS + 1];
-
-StringMap g_WeaponPrices;
-StringMap g_WeaponSlots;
-
-public Plugin myinfo = {
-    name = "CS:GO 武器替换插件",
-    author = "Qwen3-Coder",
-    description = "根据玩家偏好自动替换武器",
-    version = PLUGIN_VERSION,
-    url = "https://github.com/smushroom0105/weapon_replacement"
-};
-
-void InitializeWeaponData()
+enum struct PlayerPref
 {
-    g_WeaponPrices = new StringMap();
-    g_WeaponPrices.SetValue(WEAPON_P2000, PRICE_P2000);
-    g_WeaponPrices.SetValue(WEAPON_USP, PRICE_USP);
-    g_WeaponPrices.SetValue(WEAPON_M4A4, PRICE_M4A4);
-    g_WeaponPrices.SetValue(WEAPON_M4A1, PRICE_M4A1);
-    g_WeaponPrices.SetValue(WEAPON_MP7, PRICE_MP7);
-    g_WeaponPrices.SetValue(WEAPON_MP5, PRICE_MP5);
-    g_WeaponPrices.SetValue(WEAPON_DEAGLE, PRICE_DEAGLE);
-    g_WeaponPrices.SetValue(WEAPON_R8, PRICE_R8);
-    g_WeaponPrices.SetValue(WEAPON_FIVESEVEN, PRICE_FIVESEVEN);
-    g_WeaponPrices.SetValue(WEAPON_TEC9, PRICE_TEC9);
-    g_WeaponPrices.SetValue(WEAPON_CZ75, PRICE_CZ75);
-
-    g_WeaponSlots = new StringMap();
-    g_WeaponSlots.SetValue(WEAPON_USP, 1);
-    g_WeaponSlots.SetValue(WEAPON_P2000, 1);
-    g_WeaponSlots.SetValue(WEAPON_FIVESEVEN, 1);
-    g_WeaponSlots.SetValue(WEAPON_TEC9, 1);
-    g_WeaponSlots.SetValue(WEAPON_CZ75, 1);
-    g_WeaponSlots.SetValue(WEAPON_DEAGLE, 1);
-    g_WeaponSlots.SetValue(WEAPON_R8, 1);
-    g_WeaponSlots.SetValue(WEAPON_M4A4, 0);
-    g_WeaponSlots.SetValue(WEAPON_M4A1, 0);
-    g_WeaponSlots.SetValue(WEAPON_MP7, 0);
-    g_WeaponSlots.SetValue(WEAPON_MP5, 0);
+    bool p2000;
+    bool m4a4;
+    bool mp7;
+    bool deagle;
+    bool pistols;
+    bool loaded;
 }
+
+PlayerPref gPref[MAXPLAYERS + 1];
+
+ConVar gDefP2000, gDefM4A4, gDefMP7, gDefDeagle, gDefPistols;
+ConVar gGameType, gGameMode;
+
+Handle gCookie = null;
+bool gIsDM = false;
+
+StringMap gPrices;
+StringMap gSlots;
+
+bool gSkipReplace[MAXPLAYERS + 1]; // For bot takeover protection
+bool gHasReplacedOnSpawn[MAXPLAYERS + 1]; // To prevent repeated initial replacements
+
+public Plugin myinfo =
+{
+    name        = "CSGO Weapon Replacer (Legacy)",
+    author      = "Qwen3-Coder Plus",
+    description = "根据玩家偏好自动替换武器",
+    version     = PLUGIN_VERSION,
+    url         = "https://github.com/smushroom0105/weapon_replacement"
+};
 
 public void OnPluginStart()
 {
-    RegConsoleCmd("sm_gunsettings", Command_GunSettings, "打开武器替换设置菜单");
-    RegConsoleCmd("sm_resetguns", Command_ResetSettings, "将武器偏好重置为默认值");
+    RegConsoleCmd("sm_gunsettings", CmdSettings);
+    RegConsoleCmd("sm_resetguns", CmdReset);
 
-    g_cvDefaultP2000 = CreateConVar("sm_weapon_default_p2000", "1", "默认是否将P2000替换为USP (0 = 否, 1 = 是)", _, true, 0.0, true, 1.0);
-    g_cvDefaultM4A4 = CreateConVar("sm_weapon_default_m4a4", "0", "默认是否将M4A4替换为M4A1-S", _, true, 0.0, true, 1.0);
-    g_cvDefaultMP7 = CreateConVar("sm_weapon_default_mp7", "1", "默认是否将MP7替换为MP5-SD", _, true, 0.0, true, 1.0);
-    g_cvDefaultDeagle = CreateConVar("sm_weapon_default_deagle", "1", "默认是否将Deagle替换为R8", _, true, 0.0, true, 1.0);
-    g_cvDefaultPistols = CreateConVar("sm_weapon_default_pistols", "1", "默认是否将FN57/TEC9替换为CZ75", _, true, 0.0, true, 1.0);
+    gDefP2000   = CreateConVar("sm_weapon_default_p2000",   "1", "默认是否将P2000替换为USP", _, true, 0.0, true, 1.0);
+    gDefM4A4    = CreateConVar("sm_weapon_default_m4a4",    "0", "默认是否将M4A4替换为M4A1-S", _, true, 0.0, true, 1.0);
+    gDefMP7     = CreateConVar("sm_weapon_default_mp7",     "1", "默认是否将MP7替换为MP5-SD", _, true, 0.0, true, 1.0);
+    gDefDeagle  = CreateConVar("sm_weapon_default_deagle",  "1", "默认是否将Deagle替换为R8", _, true, 0.0, true, 1.0);
+    gDefPistols = CreateConVar("sm_weapon_default_pistols", "1", "默认是否将FN57/TEC9替换为CZ75", _, true, 0.0, true, 1.0);
 
-    g_hCookie = RegClientCookie("weapon_replacement_prefs", "玩家武器替换偏好", CookieAccess_Protected);
+    gCookie = RegClientCookie("weapon_replacement_prefs", "玩家武器替换偏好", CookieAccess_Protected);
 
-    HookEvent("item_purchase", Event_ItemPurchase);
-    HookEvent("player_spawn", Event_PlayerSpawn);
-    HookEvent("player_death", Event_PlayerDeath);
+    HookEvent("item_purchase", EventPurchase);
+    HookEvent("player_spawn",  EventSpawn);
+    HookEvent("player_death",  EventDeath);
 
-    g_cvGameType = FindConVar("game_type");
-    g_cvGameMode = FindConVar("game_mode");
+    HookEvent("bot_takeover", EventBotTakeover);
+    HookEvent("player_bot_replace", EventBotTakeover);
+    HookEvent("bot_player_replace", EventBotTakeover);
 
-    if (g_cvGameType != null) g_cvGameType.AddChangeHook(OnGameModeChanged);
-    if (g_cvGameMode != null) g_cvGameMode.AddChangeHook(OnGameModeChanged);
+    gGameType = FindConVar("game_type");
+    gGameMode = FindConVar("game_mode");
+    if (gGameType) gGameType.AddChangeHook(OnGameModeChanged);
+    if (gGameMode) gGameMode.AddChangeHook(OnGameModeChanged);
 
-    for (int i = 0; i <= MAXPLAYERS; i++) {
-        g_ReplaceQueue[i] = new ArrayList(ByteCountToCells(64));
-    }
-
-    InitializeWeaponData();
-    LoadTranslations("common.phrases");
+    InitData();
     AutoExecConfig(true, "weapon_replacement");
 
-    for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i) && AreClientCookiesCached(i)) {
+    for (int i = 1; i <= MaxClients; i++)
+        if (IsClientInGame(i) && !IsFakeClient(i) && AreClientCookiesCached(i))
             OnClientCookiesCached(i);
-        }
-    }
 
-    CheckGameMode();
+    UpdateGameMode();
 }
 
-public void OnGameModeChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+public void OnGameModeChanged(ConVar c, const char[] o, const char[] n) { UpdateGameMode(); }
+
+void UpdateGameMode()
 {
-    CheckGameMode();
+    gIsDM = (gGameType && gGameMode && gGameType.IntValue == 1 && gGameMode.IntValue == 2);
 }
 
-void CheckGameMode()
+void InitData()
 {
-    if (g_cvGameType == null || g_cvGameMode == null) {
-        g_bIsDeathmatch = false;
-        return;
-    }
-    g_bIsDeathmatch = (g_cvGameType.IntValue == 1 && g_cvGameMode.IntValue == 2);
-}
+    gPrices = new StringMap();
+    gPrices.SetValue(W_P2000, P_P2000);
+    gPrices.SetValue(W_USP,   P_USP);
+    gPrices.SetValue(W_M4A4,  P_M4A4);
+    gPrices.SetValue(W_M4A1,  P_M4A1);
+    gPrices.SetValue(W_MP7,   P_MP7);
+    gPrices.SetValue(W_MP5,   P_MP5);
+    gPrices.SetValue(W_DEAGLE,P_DEAGLE);
+    gPrices.SetValue(W_R8,    P_R8);
+    gPrices.SetValue(W_FIVE7, P_FIVE7);
+    gPrices.SetValue(W_TEC9,  P_TEC9);
+    gPrices.SetValue(W_CZ75,  P_CZ75);
 
-public void OnConfigsExecuted()
-{
-    for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i) && AreClientCookiesCached(i)) {
-            LoadPlayerSettings(i);
-        }
-    }
+    gSlots = new StringMap();
+    gSlots.SetValue(W_M4A4, 0); gSlots.SetValue(W_M4A1, 0);
+    gSlots.SetValue(W_MP7,  0); gSlots.SetValue(W_MP5,  0);
+    gSlots.SetValue(W_P2000,1); gSlots.SetValue(W_USP,  1);
+    gSlots.SetValue(W_FIVE7,1); gSlots.SetValue(W_TEC9, 1);
+    gSlots.SetValue(W_CZ75, 1); gSlots.SetValue(W_DEAGLE,1);
+    gSlots.SetValue(W_R8,   1);
 }
 
 public void OnClientCookiesCached(int client)
 {
     if (IsFakeClient(client)) return;
-    LoadPlayerSettings(client);
+    LoadPrefs(client);
 }
 
-void LoadPlayerSettings(int client)
+void LoadPrefs(int client)
 {
     char cookie[32];
-    GetClientCookie(client, g_hCookie, cookie, sizeof(cookie));
+    GetClientCookie(client, gCookie, cookie, sizeof(cookie));
 
-    g_PlayerSettings[client].ReplaceP2000 = g_cvDefaultP2000.BoolValue;
-    g_PlayerSettings[client].ReplaceM4A4 = g_cvDefaultM4A4.BoolValue;
-    g_PlayerSettings[client].ReplaceMP7 = g_cvDefaultMP7.BoolValue;
-    g_PlayerSettings[client].ReplaceDeagle = g_cvDefaultDeagle.BoolValue;
-    g_PlayerSettings[client].ReplacePistols = g_cvDefaultPistols.BoolValue;
+    gPref[client].p2000  = gDefP2000.BoolValue;
+    gPref[client].m4a4   = gDefM4A4.BoolValue;
+    gPref[client].mp7    = gDefMP7.BoolValue;
+    gPref[client].deagle = gDefDeagle.BoolValue;
+    gPref[client].pistols= gDefPistols.BoolValue;
 
-    if (strlen(cookie) > 0) {
-        char parts[5][8];
-        if (ExplodeString(cookie, ",", parts, 5, 8) == 5) {
-            bool valid = true;
-            for (int i = 0; i < 5; i++) {
-                TrimString(parts[i]);
-                if (!IsCharNumeric(parts[i][0]) || strlen(parts[i]) != 1) {
-                    valid = false;
-                    break;
-                }
-            }
-            if (valid) {
-                g_PlayerSettings[client].ReplaceP2000 = StringToInt(parts[0]) != 0;
-                g_PlayerSettings[client].ReplaceM4A4 = StringToInt(parts[1]) != 0;
-                g_PlayerSettings[client].ReplaceMP7 = StringToInt(parts[2]) != 0;
-                g_PlayerSettings[client].ReplaceDeagle = StringToInt(parts[3]) != 0;
-                g_PlayerSettings[client].ReplacePistols = StringToInt(parts[4]) != 0;
-            } else {
-                SavePlayerSettings(client);
-            }
-        } else {
-            SavePlayerSettings(client);
+    if (strlen(cookie))
+    {
+        char p[5][4];
+        if (ExplodeString(cookie, ",", p, 5, 4) == 5)
+        {
+            gPref[client].p2000  = StringToInt(p[0]) != 0;
+            gPref[client].m4a4   = StringToInt(p[1]) != 0;
+            gPref[client].mp7    = StringToInt(p[2]) != 0;
+            gPref[client].deagle = StringToInt(p[3]) != 0;
+            gPref[client].pistols= StringToInt(p[4]) != 0;
         }
-    } else {
-        SavePlayerSettings(client);
+        else SavePrefs(client);
     }
+    else SavePrefs(client);
 
-    g_PlayerSettings[client].Loaded = true;
+    gPref[client].loaded = true;
 }
 
-void SavePlayerSettings(int client)
+void SavePrefs(int client)
 {
-    char buffer[32];
-    Format(buffer, sizeof(buffer), "%d,%d,%d,%d,%d",
-        g_PlayerSettings[client].ReplaceP2000,
-        g_PlayerSettings[client].ReplaceM4A4,
-        g_PlayerSettings[client].ReplaceMP7,
-        g_PlayerSettings[client].ReplaceDeagle,
-        g_PlayerSettings[client].ReplacePistols
-    );
-    SetClientCookie(client, g_hCookie, buffer);
+    char buf[32];
+    Format(buf, sizeof(buf), "%d,%d,%d,%d,%d",
+        gPref[client].p2000,
+        gPref[client].m4a4,
+        gPref[client].mp7,
+        gPref[client].deagle,
+        gPref[client].pistols);
+    SetClientCookie(client, gCookie, buf);
 }
 
-public Action Command_GunSettings(int client, int args)
+public Action CmdSettings(int client, int args)
 {
-    if (!IsValidClient(client)) {
-        ReplyToCommand(client, "[SM] 你必须在游戏中才能使用此命令！");
-        return Plugin_Handled;
-    }
-    if (!g_PlayerSettings[client].Loaded) {
-        ReplyToCommand(client, "[SM] 设置尚未加载，请稍后再试！");
-        return Plugin_Handled;
-    }
-    ShowSettingsMenu(client);
+    if (!IsReal(client)) { ReplyToCommand(client, "[SM] 你必须在游戏中。"); return Plugin_Handled; }
+    if (!gPref[client].loaded){ ReplyToCommand(client, "[SM] 设置尚未加载。"); return Plugin_Handled; }
+    ShowMenu(client);
     return Plugin_Handled;
 }
 
-public Action Command_ResetSettings(int client, int args)
+public Action CmdReset(int client, int args)
 {
-    if (!IsValidClient(client)) {
-        ReplyToCommand(client, "[SM] 你必须在游戏中才能使用此命令！");
-        return Plugin_Handled;
-    }
+    if (!IsReal(client)) { ReplyToCommand(client, "[SM] 你必须在游戏中。"); return Plugin_Handled; }
 
-    g_PlayerSettings[client].ReplaceP2000 = g_cvDefaultP2000.BoolValue;
-    g_PlayerSettings[client].ReplaceM4A4 = g_cvDefaultM4A4.BoolValue;
-    g_PlayerSettings[client].ReplaceMP7 = g_cvDefaultMP7.BoolValue;
-    g_PlayerSettings[client].ReplaceDeagle = g_cvDefaultDeagle.BoolValue;
-    g_PlayerSettings[client].ReplacePistols = g_cvDefaultPistols.BoolValue;
+    gPref[client].p2000  = gDefP2000.BoolValue;
+    gPref[client].m4a4   = gDefM4A4.BoolValue;
+    gPref[client].mp7    = gDefMP7.BoolValue;
+    gPref[client].deagle = gDefDeagle.BoolValue;
+    gPref[client].pistols= gDefPistols.BoolValue;
 
-    SavePlayerSettings(client);
+    SavePrefs(client);
     PrintToChat(client, "[SM] 武器偏好已重置为默认值！");
-
-    if (IsPlayerAlive(client)) {
-        CheckAndReplaceWeapons(client);
-    }
-
-    ShowSettingsMenu(client);
+    if (IsPlayerAlive(client)) CheckReplace(client);
+    ShowMenu(client);
     return Plugin_Handled;
 }
 
-void ShowSettingsMenu(int client)
+void ShowMenu(int client)
 {
-    Menu menu = new Menu(MenuHandler_Settings, MENU_ACTIONS_ALL);
-    menu.SetTitle("武器替换设置 (%N)", client);
+    Menu m = new Menu(MenuSettings);
+    m.SetTitle("武器替换设置 (%N)", client);
 
-    char buffer[64];
-    Format(buffer, sizeof(buffer), "P2000 → USP消音版: %s", g_PlayerSettings[client].ReplaceP2000 ? "启用" : "禁用");
-    menu.AddItem("p2000", buffer);
-    Format(buffer, sizeof(buffer), "M4A4 → M4A1-S: %s", g_PlayerSettings[client].ReplaceM4A4 ? "启用" : "禁用");
-    menu.AddItem("m4a4", buffer);
-    Format(buffer, sizeof(buffer), "MP7 → MP5-SD: %s", g_PlayerSettings[client].ReplaceMP7 ? "启用" : "禁用");
-    menu.AddItem("mp7", buffer);
-    Format(buffer, sizeof(buffer), "沙漠之鹰 → R8左轮: %s", g_PlayerSettings[client].ReplaceDeagle ? "启用" : "禁用");
-    menu.AddItem("deagle", buffer);
-    Format(buffer, sizeof(buffer), "FN57/TEC9 → CZ75: %s", g_PlayerSettings[client].ReplacePistols ? "启用" : "禁用");
-    menu.AddItem("pistols", buffer);
+    char line[64];
+    Format(line, sizeof(line), "P2000 → USP消音版: %s", gPref[client].p2000 ? "启用" : "禁用");
+    m.AddItem("p2000", line);
+    Format(line, sizeof(line), "M4A4 → M4A1-S: %s", gPref[client].m4a4 ? "启用" : "禁用");
+    m.AddItem("m4a4", line);
+    Format(line, sizeof(line), "MP7 → MP5-SD: %s", gPref[client].mp7 ? "启用" : "禁用");
+    m.AddItem("mp7", line);
+    Format(line, sizeof(line), "沙鹰 → R8左轮: %s", gPref[client].deagle ? "启用" : "禁用");
+    m.AddItem("deagle", line);
+    Format(line, sizeof(line), "FN57/TEC9 → CZ75: %s", gPref[client].pistols ? "启用" : "禁用");
+    m.AddItem("pistols", line);
 
-    menu.ExitButton = true;
-    menu.Display(client, 30);
+    m.ExitButton = true;
+    m.Display(client, 30);
 }
 
-public int MenuHandler_Settings(Menu menu, MenuAction action, int client, int param2)
+public int MenuSettings(Menu menu, MenuAction action, int client, int item)
 {
-    if (action == MenuAction_Select) {
-        char item[32];
-        menu.GetItem(param2, item, sizeof(item));
+    if (action == MenuAction_Select)
+    {
+        char key[16];
+        menu.GetItem(item, key, sizeof(key));
+
         bool recheck = false;
+        if (StrEqual(key, "p2000"))   { gPref[client].p2000  = !gPref[client].p2000;  recheck = gPref[client].p2000  && GetClientTeam(client)==CS_TEAM_CT; }
+        else if (StrEqual(key, "m4a4")) { gPref[client].m4a4   = !gPref[client].m4a4;   recheck = gPref[client].m4a4   && GetClientTeam(client)==CS_TEAM_CT; }
+        else if (StrEqual(key, "mp7"))   { gPref[client].mp7    = !gPref[client].mp7;    recheck = gPref[client].mp7; }
+        else if (StrEqual(key, "deagle")){ gPref[client].deagle = !gPref[client].deagle; recheck = gPref[client].deagle; }
+        else if (StrEqual(key, "pistols")){ gPref[client].pistols= !gPref[client].pistols;recheck = gPref[client].pistols; }
 
-        if (StrEqual(item, "p2000")) {
-            g_PlayerSettings[client].ReplaceP2000 = !g_PlayerSettings[client].ReplaceP2000;
-            PrintToChat(client, "[SM] P2000 → USP消音版: %s", g_PlayerSettings[client].ReplaceP2000 ? "已启用" : "已禁用");
-            recheck = g_PlayerSettings[client].ReplaceP2000 && GetClientTeam(client) == CS_TEAM_CT;
-        } else if (StrEqual(item, "m4a4")) {
-            g_PlayerSettings[client].ReplaceM4A4 = !g_PlayerSettings[client].ReplaceM4A4;
-            PrintToChat(client, "[SM] M4A4 → M4A1-S: %s", g_PlayerSettings[client].ReplaceM4A4 ? "已启用" : "已禁用");
-            recheck = g_PlayerSettings[client].ReplaceM4A4 && GetClientTeam(client) == CS_TEAM_CT;
-        } else if (StrEqual(item, "mp7")) {
-            g_PlayerSettings[client].ReplaceMP7 = !g_PlayerSettings[client].ReplaceMP7;
-            PrintToChat(client, "[SM] MP7 → MP5-SD: %s", g_PlayerSettings[client].ReplaceMP7 ? "已启用" : "已禁用");
-            recheck = g_PlayerSettings[client].ReplaceMP7;
-        } else if (StrEqual(item, "deagle")) {
-            g_PlayerSettings[client].ReplaceDeagle = !g_PlayerSettings[client].ReplaceDeagle;
-            PrintToChat(client, "[SM] 沙漠之鹰 → R8左轮: %s", g_PlayerSettings[client].ReplaceDeagle ? "已启用" : "已禁用");
-            recheck = g_PlayerSettings[client].ReplaceDeagle;
-        } else if (StrEqual(item, "pistols")) {
-            g_PlayerSettings[client].ReplacePistols = !g_PlayerSettings[client].ReplacePistols;
-            PrintToChat(client, "[SM] FN57/TEC9 → CZ75: %s", g_PlayerSettings[client].ReplacePistols ? "已启用" : "已禁用");
-            recheck = g_PlayerSettings[client].ReplacePistols;
-        }
-
-        SavePlayerSettings(client);
-        if (IsPlayerAlive(client) && recheck) {
-            CheckAndReplaceWeapons(client);
-        }
-        ShowSettingsMenu(client);
-    } else if (action == MenuAction_End) {
-        delete menu;
+        SavePrefs(client);
+        if (IsPlayerAlive(client) && recheck) CheckReplace(client);
+        ShowMenu(client);
     }
+    else if (action == MenuAction_End) delete menu;
     return 0;
 }
 
-public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+public Action EventSpawn(Event e, const char[] n, bool nb)
 {
-    int client = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidClient(client) || !IsPlayerAlive(client)) return Plugin_Continue;
+    int client = GetClientOfUserId(e.GetInt("userid"));
+    if (!IsReal(client) || !IsPlayerAlive(client)) return Plugin_Continue;
 
-    g_ReplaceQueue[client].Clear();
-    CreateTimer(g_bIsDeathmatch ? 1.5 : 1.0, Timer_CheckInitialWeapons, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-    return Plugin_Continue;
-}
-
-public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
-{
-    int client = GetClientOfUserId(event.GetInt("userid"));
-    if (IsValidClient(client)) {
-        g_ReplaceQueue[client].Clear();
+    // Reset the flag on spawn so it only runs once per spawn cycle (when not from death)
+    gHasReplacedOnSpawn[client] = false;
+    
+    // Only run initial replacement if not coming back from a death that immediately respawned with same weapons
+    if (!gHasReplacedOnSpawn[client]) {
+        CreateTimer(gIsDM ? 1.5 : 1.0, TimerInitial, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+        gHasReplacedOnSpawn[client] = true;
     }
     return Plugin_Continue;
 }
 
-public Action Timer_CheckInitialWeapons(Handle timer, any userid)
+public Action EventDeath(Event e, const char[] n, bool nb)
+{
+    int client = GetClientOfUserId(e.GetInt("userid"));
+    if (IsReal(client)) {
+        gSkipReplace[client] = false;
+        gHasReplacedOnSpawn[client] = false; // Reset on death to allow replacement on next spawn
+    }
+    return Plugin_Continue;
+}
+
+public Action EventBotTakeover(Event e, const char[] name, bool nb)
+{
+    int userid = e.GetInt("userid");
+    if (userid == 0) userid = e.GetInt("player");
+    int client = GetClientOfUserId(userid);
+    if (!IsReal(client)) return Plugin_Continue;
+
+    gSkipReplace[client] = true;
+    CreateTimer(0.5, TimerClearSkip, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+    return Plugin_Continue;
+}
+
+public Action TimerClearSkip(Handle t, any userid)
 {
     int client = GetClientOfUserId(userid);
-    if (!IsValidClient(client) || !IsPlayerAlive(client) || !g_PlayerSettings[client].Loaded) return Plugin_Stop;
-
-    CheckAndReplaceWeapons(client);
+    if (IsReal(client)) gSkipReplace[client] = false;
     return Plugin_Stop;
 }
 
-void CheckAndReplaceWeapons(int client)
+public Action TimerInitial(Handle t, any userid)
 {
-    if (GetClientTeam(client) == CS_TEAM_CT) {
-        if (g_PlayerSettings[client].ReplaceM4A4 && FindWeapon(client, WEAPON_M4A1) == -1)
-            ReplaceWeapon(client, WEAPON_M4A4, WEAPON_M4A1, false);
-        if (g_PlayerSettings[client].ReplaceP2000 && FindWeapon(client, WEAPON_USP) == -1)
-            ReplaceWeapon(client, WEAPON_P2000, WEAPON_USP, false);
-        if (g_PlayerSettings[client].ReplacePistols && FindWeapon(client, WEAPON_CZ75) == -1)
-            ReplaceWeapon(client, WEAPON_FIVESEVEN, WEAPON_CZ75, false);
-    } else if (GetClientTeam(client) == CS_TEAM_T && g_PlayerSettings[client].ReplacePistols) {
-        if (FindWeapon(client, WEAPON_CZ75) == -1)
-            ReplaceWeapon(client, WEAPON_TEC9, WEAPON_CZ75, false);
-    }
-
-    if (g_PlayerSettings[client].ReplaceMP7 && FindWeapon(client, WEAPON_MP5) == -1)
-        ReplaceWeapon(client, WEAPON_MP7, WEAPON_MP5, false);
-    if (g_PlayerSettings[client].ReplaceDeagle && FindWeapon(client, WEAPON_R8) == -1)
-        ReplaceWeapon(client, WEAPON_DEAGLE, WEAPON_R8, false);
+    int client = GetClientOfUserId(userid);
+    if (IsReal(client) && IsPlayerAlive(client) && gPref[client].loaded)
+        CheckReplace(client);
+    return Plugin_Stop;
 }
 
-public Action Event_ItemPurchase(Event event, const char[] name, bool dontBroadcast)
+void CheckReplace(int client)
 {
-    int client = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidClient(client) || !IsPlayerAlive(client) || !g_PlayerSettings[client].Loaded) return Plugin_Continue;
+    if (gSkipReplace[client])
+    {
+        gSkipReplace[client] = false;
+        return;
+    }
+
+    int team = GetClientTeam(client);
+
+    if (team == CS_TEAM_CT)
+    {
+        if (gPref[client].m4a4   && FindWeapon(client, W_M4A1) == -1) ReplaceDelayed(client, W_M4A4,  W_M4A1,  false);
+        if (gPref[client].p2000  && FindWeapon(client, W_USP)  == -1) ReplaceDelayed(client, W_P2000, W_USP,  false);
+        if (gPref[client].pistols&& FindWeapon(client, W_CZ75) == -1) ReplaceDelayed(client, W_FIVE7, W_CZ75, false);
+    }
+    else if (team == CS_TEAM_T && gPref[client].pistols)
+    {
+        if (FindWeapon(client, W_CZ75) == -1) ReplaceDelayed(client, W_TEC9, W_CZ75, false);
+    }
+
+    if (gPref[client].mp7    && FindWeapon(client, W_MP5) == -1) ReplaceDelayed(client, W_MP7, W_MP5, false);
+    if (gPref[client].deagle && FindWeapon(client, W_R8)  == -1) ReplaceDelayed(client, W_DEAGLE, W_R8, false);
+}
+
+public Action EventPurchase(Event e, const char[] n, bool nb)
+{
+    int client = GetClientOfUserId(e.GetInt("userid"));
+    if (!IsReal(client) || !IsPlayerAlive(client) || !gPref[client].loaded) return Plugin_Continue;
 
     char weapon[32];
-    event.GetString("weapon", weapon, sizeof(weapon));
+    e.GetString("weapon", weapon, sizeof(weapon));
+    // Normalize: remove "weapon_" prefix if present
+    if (StrContains(weapon, "weapon_") == 0) strcopy(weapon, sizeof(weapon), weapon[7]);
 
-    char normalized[32];
-    if (StrContains(weapon, "weapon_") == 0) {
-        strcopy(normalized, sizeof(normalized), weapon[7]);
-    } else {
-        strcopy(normalized, sizeof(normalized), weapon);
+    if (gPref[client].p2000 && StrEqual(weapon, "hkp2000") && FindWeapon(client, W_USP) == -1)
+        ReplaceDelayed(client, W_P2000, W_USP, true);
+    else if (gPref[client].m4a4 && StrEqual(weapon, "m4a1") && FindWeapon(client, W_M4A1) == -1)
+        ReplaceDelayed(client, W_M4A4, W_M4A1, true);
+    else if (gPref[client].mp7 && StrEqual(weapon, "mp7") && FindWeapon(client, W_MP5) == -1)
+        ReplaceDelayed(client, W_MP7, W_MP5, true);
+    else if (gPref[client].deagle && StrEqual(weapon, "deagle") && FindWeapon(client, W_R8) == -1)
+        ReplaceDelayed(client, W_DEAGLE, W_R8, true);
+    else if (gPref[client].pistols)
+    {
+        if (GetClientTeam(client) == CS_TEAM_CT && StrEqual(weapon, "fiveseven") && FindWeapon(client, W_CZ75) == -1)
+            ReplaceDelayed(client, W_FIVE7, W_CZ75, true);
+        else if (GetClientTeam(client) == CS_TEAM_T && StrEqual(weapon, "tec9") && FindWeapon(client, W_CZ75) == -1)
+            ReplaceDelayed(client, W_TEC9, W_CZ75, true);
     }
-
-    g_ReplaceQueue[client].Clear();
-
-    if (g_PlayerSettings[client].ReplaceP2000 && StrEqual(normalized, "hkp2000") && FindWeapon(client, WEAPON_USP) == -1)
-        ReplaceWeapon(client, WEAPON_P2000, WEAPON_USP, true);
-    else if (g_PlayerSettings[client].ReplaceM4A4 && StrEqual(normalized, "m4a1") && FindWeapon(client, WEAPON_M4A1) == -1)
-        ReplaceWeapon(client, WEAPON_M4A4, WEAPON_M4A1, true);
-    else if (g_PlayerSettings[client].ReplaceMP7 && StrEqual(normalized, "mp7") && FindWeapon(client, WEAPON_MP5) == -1)
-        ReplaceWeapon(client, WEAPON_MP7, WEAPON_MP5, true);
-    else if (g_PlayerSettings[client].ReplaceDeagle && StrEqual(normalized, "deagle") && FindWeapon(client, WEAPON_R8) == -1)
-        ReplaceWeapon(client, WEAPON_DEAGLE, WEAPON_R8, true);
-    else if (g_PlayerSettings[client].ReplacePistols) {
-        if (GetClientTeam(client) == CS_TEAM_CT && StrEqual(normalized, "fiveseven") && FindWeapon(client, WEAPON_CZ75) == -1)
-            ReplaceWeapon(client, WEAPON_FIVESEVEN, WEAPON_CZ75, true);
-        else if (GetClientTeam(client) == CS_TEAM_T && StrEqual(normalized, "tec9") && FindWeapon(client, WEAPON_CZ75) == -1)
-            ReplaceWeapon(client, WEAPON_TEC9, WEAPON_CZ75, true);
-    }
-
     return Plugin_Continue;
 }
 
-void ReplaceWeapon(int client, const char[] oldWeapon, const char[] newWeapon, bool refundMoney = true)
+void ReplaceDelayed(int client, const char[] oldW, const char[] newW, bool refund)
 {
-    char info[64];
-    Format(info, sizeof(info), "%s;%s", oldWeapon, newWeapon);
-    g_ReplaceQueue[client].PushString(info);
-
-    DataPack pack = new DataPack();
-    pack.WriteCell(GetClientUserId(client));
-    pack.WriteString(info);
-    pack.WriteCell(refundMoney);
-    float delay = g_bIsDeathmatch ? 0.5 : 0.2;
-    CreateTimer(delay, Timer_ProcessReplace, pack, TIMER_FLAG_NO_MAPCHANGE);
+    DataPack dp = new DataPack();
+    dp.WriteCell(GetClientUserId(client));
+    dp.WriteString(oldW);
+    dp.WriteString(newW);
+    dp.WriteCell(refund);
+    CreateTimer(gIsDM ? 0.5 : 0.2, TimerReplace, dp, TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public Action Timer_ProcessReplace(Handle timer, DataPack pack)
+public Action TimerReplace(Handle t, DataPack dp)
 {
-    pack.Reset();
-    int client = GetClientOfUserId(pack.ReadCell());
-    char info[64];
-    pack.ReadString(info, sizeof(info));
-    bool refundMoney = pack.ReadCell();
-    delete pack;
+    dp.Reset();
+    int client = GetClientOfUserId(dp.ReadCell());
+    char oldW[32]; dp.ReadString(oldW, sizeof(oldW));
+    char newW[32]; dp.ReadString(newW, sizeof(newW));
+    bool refund = dp.ReadCell();
+    delete dp;
 
-    if (!IsValidClient(client) || !IsPlayerAlive(client)) return Plugin_Stop;
+    if (!IsReal(client) || !IsPlayerAlive(client)) return Plugin_Stop;
 
-    int index = g_ReplaceQueue[client].FindString(info);
-    if (index == -1) return Plugin_Stop;
-    g_ReplaceQueue[client].Erase(index);
+    int oldEnt = FindWeapon(client, oldW);
+    if (oldEnt == -1) return Plugin_Stop;
 
-    char parts[2][32];
-    if (ExplodeString(info, ";", parts, 2, 32) != 2) return Plugin_Stop;
-
-    char oldWeapon[32], newWeapon[32];
-    strcopy(oldWeapon, sizeof(oldWeapon), parts[0]);
-    strcopy(newWeapon, sizeof(newWeapon), parts[1]);
-
-    int weapon = FindWeapon(client, oldWeapon);
-    if (weapon == -1) return Plugin_Stop;
-
-    if (FindWeapon(client, newWeapon) != -1) {
-        RemovePlayerItem(client, weapon);
-        AcceptEntityInput(weapon, "Kill");
+    if (FindWeapon(client, newW) != -1)
+    {
+        RemovePlayerItem(client, oldEnt);
+        AcceptEntityInput(oldEnt, "Kill");
         return Plugin_Stop;
     }
 
     int oldPrice, newPrice;
-    if (!g_WeaponPrices.GetValue(oldWeapon, oldPrice) || !g_WeaponPrices.GetValue(newWeapon, newPrice)) return Plugin_Stop;
+    if (!gPrices.GetValue(oldW, oldPrice) || !gPrices.GetValue(newW, newPrice))
+        return Plugin_Stop;
 
-    int newEnt = -1;
-    if (g_bIsDeathmatch) {
-        newEnt = GivePlayerItem(client, newWeapon);
-        if (newEnt != -1 && IsValidEntity(newEnt)) {
+    int newEnt;
+    if (gIsDM)
+    {
+        newEnt = GivePlayerItem(client, newW);
+        if (newEnt != -1 && IsValidEntity(newEnt))
+        {
             EquipPlayerWeapon(client, newEnt);
-            RemovePlayerItem(client, weapon);
-            AcceptEntityInput(weapon, "Kill");
+            RemovePlayerItem(client, oldEnt);
+            AcceptEntityInput(oldEnt, "Kill");
         }
-    } else {
-        RemovePlayerItem(client, weapon);
-        AcceptEntityInput(weapon, "Kill");
-        newEnt = GivePlayerItem(client, newWeapon);
-        if (newEnt != -1 && IsValidEntity(newEnt)) {
+    }
+    else
+    {
+        RemovePlayerItem(client, oldEnt);
+        AcceptEntityInput(oldEnt, "Kill");
+        newEnt = GivePlayerItem(client, newW);
+        if (newEnt != -1 && IsValidEntity(newEnt))
             EquipPlayerWeapon(client, newEnt);
-        }
     }
 
     if (newEnt == -1 || !IsValidEntity(newEnt)) return Plugin_Stop;
 
-    int slot = GetWeaponSlot(newWeapon);
-    if (slot != -1 && GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon") != newEnt) {
-        ClientCommand(client, "use %s", newWeapon);
-    }
+    int slot;
+    if (gSlots.GetValue(newW, slot) && GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon") != newEnt)
+        ClientCommand(client, "use %s", newW);
 
-    if (refundMoney && oldPrice != newPrice) {
-        int currentMoney = GetEntProp(client, Prop_Send, "m_iAccount");
-        int diff = oldPrice - newPrice;
-        int newMoney = currentMoney + diff;
-        newMoney = (newMoney < 0) ? 0 : (newMoney > 16000) ? 16000 : newMoney;
-        SetEntProp(client, Prop_Send, "m_iAccount", newMoney);
+    if (refund && oldPrice != newPrice)
+    {
+        int money = GetEntProp(client, Prop_Send, "m_iAccount");
+        money += (oldPrice - newPrice);
+        if (money < 0) money = 0;
+        if (money > 16000) money = 16000;
+        SetEntProp(client, Prop_Send, "m_iAccount", money);
     }
 
     return Plugin_Stop;
 }
 
-int FindWeapon(int client, const char[] weaponClass)
+int FindWeapon(int client, const char[] cls)
 {
-    for (int i = 0; i < 64; i++) {
-        int weapon = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
-        if (weapon == -1) break;
-        char classname[32];
-        if (GetEntityClassname(weapon, classname, sizeof(classname)) && StrEqual(classname, weaponClass)) {
-            return weapon;
-        }
+    for (int i = 0; i < 64; i++)
+    {
+        int ent = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
+        if (ent == -1) break;
+        char name[32];
+        if (GetEntityClassname(ent, name, sizeof(name)) && StrEqual(name, cls))
+            return ent;
     }
     return -1;
 }
 
-int GetWeaponSlot(const char[] weapon)
-{
-    int slot;
-    if (g_WeaponSlots.GetValue(weapon, slot)) return slot;
-    return -1;
-}
-
-bool IsValidClient(int client)
+bool IsReal(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client));
 }
 
 public void OnClientDisconnect(int client)
 {
-    g_PlayerSettings[client].Loaded = false;
-    g_ReplaceQueue[client].Clear();
+    gPref[client].loaded = false;
+    gSkipReplace[client] = false;
+    gHasReplacedOnSpawn[client] = false;
 }
 
 public void OnPluginEnd()
 {
-    for (int i = 0; i <= MAXPLAYERS; i++) {
-        delete g_ReplaceQueue[i];
-    }
-    delete g_WeaponPrices;
-    delete g_WeaponSlots;
+    delete gPrices;
+    delete gSlots;
 }
